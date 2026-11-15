@@ -20,6 +20,7 @@ export const identificationSchema = z.object({
   searchQueries: z.array(z.string().min(1).max(240)).max(5),
   warnings: z.array(z.string().max(300)).max(30),
 });
+export type IdentificationResult = z.infer<typeof identificationSchema>;
 
 export const confirmationSchema = z.object({
   name: z.string().min(1).max(240),

@@ -2,7 +2,6 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import jwt from "@fastify/jwt";
-import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import sensible from "@fastify/sensible";
 import swagger from "@fastify/swagger";
@@ -23,7 +22,6 @@ export async function buildApp(options: { logger?: boolean | object } = {}): Pro
   await app.register(cors, { origin: allowedOrigins, credentials: false, methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] });
   await app.register(rateLimit, { global: true, max: 120, timeWindow: "1 minute" });
   await app.register(sensible);
-  await app.register(multipart, { limits: { fileSize: 8 * 1024 * 1024, files: 1, fields: 10, parts: 12 } });
   await app.register(jwt, { secret: env.JWT_SECRET, sign: { iss: "radar-back", aud: "radar-mobile" }, verify: { allowedIss: "radar-back", allowedAud: "radar-mobile" } });
   await app.register(swagger, {
     openapi: {

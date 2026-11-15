@@ -4,27 +4,19 @@ Base local: `http://localhost:4000/api/v1`. Respostas de sucesso usam `{ "data":
 
 ## Análises
 
-### Criar e identificar
-
-`POST /analyses` — `multipart/form-data` autenticado. Campo obrigatório `image` (JPEG, PNG ou WebP; máximo de 8 MB); `askingPriceCents` opcional, em centavos inteiros. Enviar `Idempotency-Key` para evitar análises duplicadas.
-
-A API valida e otimiza a imagem em arquivo temporário, consulta o Gemini, valida a resposta e descarta o arquivo antes de responder. O retorno contém análise e identificação estruturada; não contém foto nem URL de imagem.
-
-### Repetir identificação
-
-`POST /analyses/:id/identify` — mesmo formato multipart com o campo `image`. A imagem é necessária novamente porque nenhuma fotografia é persistida.
-
-### Confirmar e pesquisar
-
+- `POST /analyses/live-session` — autenticado; emite token efêmero Gemini Live limitado ao modelo de leitura do RADAR. A chave Gemini permanente nunca é retornada. O cliente conecta ao Gemini diretamente; imagens não são enviadas a esta API.
+- `POST /analyses/live-result` — autenticado; recebe `{"identification": {...}}`, valida todos os campos da identificação com Zod e cria o registro estruturado. Aceita `Idempotency-Key` para evitar duplicações.
 - `POST /analyses/:id/confirm-identification` — JSON corrigido/confirmado pelo usuário.
 - `POST /analyses/:id/research` — inicia pesquisa após confirmação.
 - `GET /analyses/:id/result` — identificação, referências, estimativas, liquidez, cenários e recomendação.
-- `POST /analyses/:id/recalculate` — recalcula custos sem chamar IA nem a pesquisa.
+- `POST /analyses/:id/recalculate` — recalcula custos sem chamar IA nem pesquisa.
 - `GET /analyses/:id/references` — anúncios armazenados, com fonte, URL e data de coleta.
-- `GET /analyses?page=1&limit=20` — histórico paginado; não inclui imagens.
-- `GET /analyses/:id` — detalhe da análise; não inclui imagem.
+- `GET /analyses?page=1&limit=20` — histórico paginado, sem imagens.
+- `GET /analyses/:id` — detalhe da análise, sem imagem.
 - `PATCH /analyses/:id` — atualiza simulação financeira.
-- `DELETE /analyses/:id` — remove a análise e dados associados; não requer chamada de storage.
+- `DELETE /analyses/:id` — remove a análise e os dados associados.
+
+A API não possui endpoint multipart para imagem. Os quadros da câmera e fotos escolhidas no app são enviados diretamente do aparelho para o Gemini Live por uma conexão efêmera.
 
 ## Autenticação, oportunidades e configurações
 
@@ -36,5 +28,5 @@ A API valida e otimiza a imagem em arquivo temporário, consulta o Gemini, valid
 
 ## Estados e limitações
 
-Falha Gemini deixa a análise em `failed` e não inventa identificação; a repetição requer novo upload. Falha da fonte de mercado deixa a análise `partial`, mantendo os dados já gravados. As referências do Mercado Livre são anúncios ativos, não vendas comprovadas. A foto não pode ser reaberta no histórico.
+Falha do Gemini mantém o resultado não criado; a identificação pode ser repetida ao iniciar outra sessão de leitura. Falha da fonte de mercado deixa a análise parcial, mantendo os dados já gravados. As referências do Mercado Livre são anúncios ativos, não vendas comprovadas. A foto não pode ser reaberta no histórico.
 

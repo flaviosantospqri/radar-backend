@@ -1,92 +1,49 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { requireDb } from "../../database/client.js";
 import { aiUsageLogs, analyses, marketReferences, opportunities, products, profitability, researchLogs } from "../../database/schema.js";
-import { identifyProduct } from "../../integrations/gemini/identification.js";
+import { createGeminiLiveSession } from "../../integrations/gemini/live-session.js";
 import { mercadoLivreProvider } from "../../integrations/market-providers/mercado-livre.js";
 import { authenticate } from "../../shared/auth.js";
 import { AppError, safeErrorMessage } from "../../shared/errors.js";
-import { parseCents } from "../../shared/money.js";
 import { classifyMatch } from "../../shared/matching.js";
-import { confirmationSchema, simulateSchema, uuidSchema } from "../../shared/validation.js";
+import { confirmationSchema, identificationSchema, simulateSchema, uuidSchema } from "../../shared/validation.js";
 import { cachedResearchExists, evaluateAnalysis, getAnalysisResult, getOwnedAnalysis, persistIdentification } from "./service.js";
-import { ALLOWED_IMAGE_MIME_TYPES, MAX_IMAGE_BYTES, optimizeToTemporaryFile, type UploadedImage } from "./temp-image.js";
-
-async function readUpload(request: FastifyRequest) {
-  let image: Buffer | null = null;
-  let mimeType: string | null = null;
-  let askingPriceCents: number | null = null;
-  try {
-    for await (const part of request.parts()) {
-      if (part.type === "file") {
-        if (image) throw new AppError("Envie somente uma imagem por análise.", 400, "TOO_MANY_FILES");
-        if (!ALLOWED_IMAGE_MIME_TYPES.has(part.mimetype)) throw new AppError("Formato inválido. Use JPEG, PNG ou WebP.", 415, "INVALID_IMAGE_TYPE");
-        image = await part.toBuffer();
-        if (image.byteLength > MAX_IMAGE_BYTES) throw new AppError("A imagem excede o limite de 8 MB.", 413, "IMAGE_TOO_LARGE");
-        mimeType = part.mimetype;
-      } else if (part.fieldname === "askingPriceCents") {
-        askingPriceCents = parseCents(part.value, "askingPriceCents");
-      }
-    }
-  } catch (error) {
-    image?.fill(0);
-    throw error;
-  }
-  if (!image || !mimeType) throw new AppError("A fotografia do produto é obrigatória.", 400, "IMAGE_REQUIRED");
-  return { upload: { buffer: image, mimeType } satisfies UploadedImage, askingPriceCents };
-}
-
-async function identifyAndLog(analysisId: string, image: Buffer, mimeType: string) {
-  const db = requireDb();
-  try {
-    const response = await identifyProduct({ image, mimeType });
-    const product = await persistIdentification(analysisId, response.data);
-    await db.insert(aiUsageLogs).values({
-      analysisId, provider: "google_genai", model: response.model, operation: "product_identification",
-      inputTokens: response.inputTokens, outputTokens: response.outputTokens, estimatedCostUsd: null, status: "success",
-      errorMessage: response.usedCorrection ? "Resposta corrigida em uma segunda chamada por falha de validação inicial." : null,
-    });
-    return product;
-  } catch (error) {
-    const errorMessage = safeErrorMessage(error);
-    await db.insert(aiUsageLogs).values({ analysisId, provider: "google_genai", model: process.env.GEMINI_MODEL ?? "gemini-3.8-flash", operation: "product_identification", status: "failed", errorMessage });
-    await db.update(analyses).set({ status: "failed", updatedAt: new Date() }).where(eq(analyses.id, analysisId));
-    throw error;
-  }
-}
 
 export async function analysesRoutes(app: FastifyInstance) {
   app.addHook("preHandler", authenticate);
 
-  app.post("/", async (request, reply) => {
+  app.post("/live-session", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async () => {
+    const session = await createGeminiLiveSession();
+    return { data: session };
+  });
+
+  app.post("/live-result", async (request, reply) => {
     const db = requireDb();
     const userId = request.auth!.userId;
+    const body = request.body as { identification?: unknown };
+    const identification = identificationSchema.parse(body?.identification);
     const idempotencyKey = request.headers["idempotency-key"];
     const clientRequestId = typeof idempotencyKey === "string" ? idempotencyKey.slice(0, 100) : null;
     if (clientRequestId) {
-      const [existing] = await db.select({ id: analyses.id }).from(analyses).where(and(eq(analyses.userId, userId), eq(analyses.clientRequestId, clientRequestId))).limit(1);
+      const [existing] = await db.select({ id: analyses.id }).from(analyses)
+        .where(and(eq(analyses.userId, userId), eq(analyses.clientRequestId, clientRequestId))).limit(1);
       if (existing) return reply.code(200).send({ data: await getAnalysisResult(userId, existing.id), idempotentReplay: true });
     }
-    const { upload, askingPriceCents } = await readUpload(request);
-    let temporaryImage;
-    try { temporaryImage = await optimizeToTemporaryFile(upload); }
-    catch (error) { upload.buffer.fill(0); throw error; }
     const id = randomUUID();
+    const [analysis] = await db.insert(analyses).values({ id, userId, clientRequestId, status: "identifying" }).onConflictDoNothing().returning();
+    if (!analysis) throw new AppError("Não foi possível registrar a análise.", 500, "ANALYSIS_CREATE_FAILED");
     try {
-      const [analysis] = await db.insert(analyses).values({ id, userId, clientRequestId, status: "identifying", askingPriceCents }).onConflictDoNothing().returning();
-      if (!analysis) {
-        const [existing] = clientRequestId ? await db.select({ id: analyses.id }).from(analyses).where(and(eq(analyses.userId, userId), eq(analyses.clientRequestId, clientRequestId))).limit(1) : [];
-        if (existing) return reply.code(200).send({ data: await getAnalysisResult(userId, existing.id), idempotentReplay: true });
-        throw new AppError("Não foi possível registrar a análise.", 500, "ANALYSIS_CREATE_FAILED");
-      }
-      let product = null;
-      try { product = await identifyAndLog(id, temporaryImage.buffer, temporaryImage.mimeType); }
-      catch (error) { request.log.warn({ err: error, analysisId: id }, "Identification failed; temporary image was discarded"); }
+      const product = await persistIdentification(id, identification);
+      await db.insert(aiUsageLogs).values({
+        analysisId: id, provider: "google_genai", model: process.env.GEMINI_LIVE_MODEL ?? "gemini-3.1-flash-live-preview",
+        operation: "live_product_identification", status: "success", errorMessage: null,
+      }).catch((error) => request.log.warn({ err: error, analysisId: id }, "Could not record the client-side Gemini usage event"));
       return reply.code(202).send({ data: { ...(await getOwnedAnalysis(userId, id)), product } });
-    } finally {
-      upload.buffer.fill(0);
-      await temporaryImage.dispose();
+    } catch (error) {
+      await db.update(analyses).set({ status: "failed", updatedAt: new Date() }).where(eq(analyses.id, id));
+      throw error;
     }
   });
 
@@ -137,26 +94,6 @@ export async function analysesRoutes(app: FastifyInstance) {
     await getOwnedAnalysis(userId, id);
     await requireDb().delete(analyses).where(and(eq(analyses.id, id), eq(analyses.userId, userId)));
     return reply.code(204).send();
-  });
-
-  app.post("/:id/identify", async (request) => {
-    const id = uuidSchema.parse((request.params as { id: string }).id);
-    const userId = request.auth!.userId;
-    const { analysis, product: existingProduct } = await getOwnedAnalysis(userId, id);
-    if (existingProduct && analysis.status === "awaiting_confirmation") return { data: { analysis, product: existingProduct, reused: true } };
-    if (analysis.status === "identifying") throw new AppError("A identificação desta análise já está em andamento.", 409, "IDENTIFICATION_IN_PROGRESS");
-    const { upload } = await readUpload(request);
-    let temporaryImage;
-    try { temporaryImage = await optimizeToTemporaryFile(upload); }
-    catch (error) { upload.buffer.fill(0); throw error; }
-    try {
-      await requireDb().update(analyses).set({ status: "identifying", updatedAt: new Date() }).where(eq(analyses.id, id));
-      const identified = await identifyAndLog(id, temporaryImage.buffer, temporaryImage.mimeType);
-      return { data: { analysis: (await getOwnedAnalysis(userId, id)).analysis, product: identified, reused: false } };
-    } finally {
-      upload.buffer.fill(0);
-      await temporaryImage.dispose();
-    }
   });
 
   app.post("/:id/confirm-identification", async (request) => {

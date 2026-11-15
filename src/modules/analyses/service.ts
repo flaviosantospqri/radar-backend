@@ -5,7 +5,7 @@ import { AppError } from "../../shared/errors.js";
 import { calculateProfitability } from "../../shared/money.js";
 import { summarizeMarket } from "./market-math.js";
 import { scoreOpportunity } from "./scoring.js";
-import type { IdentificationResult } from "../../integrations/gemini/identification.js";
+import type { IdentificationResult } from "../../shared/validation.js";
 
 export async function getOwnedAnalysis(userId: string, analysisId: string) {
   const db = requireDb();

@@ -1,35 +1,36 @@
-# Arquitetura do RADAR Backend
+# Arquitetura do RADAR
 
 ## Repositórios e responsabilidades
 
-`radar-back` é um repositório Git independente. O mobile conversa exclusivamente com a API Fastify versionada em `/api/v1`. O backend é a fonte das regras, persiste dados estruturados no Neon por Drizzle ORM e integra o Gemini e provedores autorizados de pesquisa.
+`radar-mobile` contém a câmera e a experiência de identificação. `radar-back` fornece autenticação, emissão segura de sessões Gemini, validação dos dados estruturados, pesquisa de mercado, cálculo financeiro e histórico. O Neon PostgreSQL armazena somente dados de domínio e resultados estruturados.
 
-## Ciclo de vida da imagem
+## Fluxo de leitura ao vivo
 
-1. O cliente envia uma única fotografia por `multipart/form-data`.
-2. Fastify limita o upload a 8 MB e aceita somente `image/jpeg`, `image/png` ou `image/webp`.
-3. Sharp decodifica o conteúdo; não se confia somente no MIME declarado. A imagem é orientada, redimensionada para caber em 1600 × 1600 px e convertida em JPEG.
-4. O arquivo otimizado existe temporariamente em uma pasta própria do sistema (`radar-analysis-*`). O backend o lê para a chamada multimodal do Gemini.
-5. O backend valida a saída estruturada com Zod e grava os campos da identificação em `products`, além dos logs de uso.
-6. Em sucesso ou falha, o `finally` zera os buffers e remove a pasta e o arquivo temporários.
+1. O usuário concede acesso à câmera e inicia a leitura ao vivo.
+2. O app mostra a prévia contínua da câmera e captura quadros JPEG pequenos, em sequência e no máximo uma vez por segundo.
+3. O app solicita uma sessão ao endpoint autenticado `POST /api/v1/analyses/live-session`.
+4. O backend usa `GEMINI_API_KEY` para emitir um token Gemini Live de uso único, com prazo curto, e restringe a sessão ao modelo e à configuração de identificação do RADAR.
+5. O app conecta diretamente ao WebSocket Gemini Live e envia os quadros para inferência. O fluxo de bytes de imagem não atravessa a API RADAR.
+6. O app interpreta a resposta JSON e envia somente os campos estruturados para `POST /api/v1/analyses/live-result`.
+7. O backend valida a identificação com Zod e persiste análise e produto no Neon.
+8. O usuário confirma/corrige a identificação; só então o backend pesquisa anúncios, estima preços e calcula rentabilidade.
 
-Não há Cloudflare R2, Firebase Storage, URL assinada, caminho de imagem persistido, nem Base64 de imagem no PostgreSQL. O Base64 exigido pela API multimodal pode existir transitoriamente na chamada ao provedor; não é salvo no banco.
+Gemini recebe os quadros para processá-los. Eles não são armazenados pelo RADAR, enviados ao Render ou persistidos no PostgreSQL. Uma fotografia de galeria, se escolhida, segue a mesma conexão direta ao Gemini e nunca é enviada ao backend.
 
-O serviço também remove, na inicialização e a cada 15 minutos, somente pastas `radar-analysis-*` com idade superior a `TEMP_IMAGE_MAX_AGE_MS` (padrão: 1 hora), cobrindo encerramentos abruptos. Se a identificação falhar, o histórico conserva análise e erro; uma nova tentativa exige que o cliente reenvie a fotografia.
+## Persistência e histórico
 
-## Persistência
+Neon PostgreSQL guarda usuários, sessões, análises sem imagem, identificação estruturada, referências de mercado, cálculos, oportunidades, configurações e logs. Não existe coluna, tabela, Base64, URL, caminho local ou chave de storage para imagem. O histórico pode ser consultado sem recuperar a imagem original.
 
-Neon PostgreSQL guarda usuários, sessões, análises sem arquivo de imagem, identificação estruturada, referências de mercado, cálculos, oportunidades, configurações e logs. Excluir uma análise remove seus registros dependentes por integridade referencial. O histórico continua disponível sem a foto original.
-
-Todos os valores monetários são centavos inteiros. Matching, cenários e recomendação são executados pelo backend. Anúncios ativos são tratados como preços anunciados, não vendas realizadas.
+Matching, cenários e recomendação são executados pelo backend. Valores monetários são centavos inteiros. Anúncios ativos representam preços anunciados, não vendas realizadas.
 
 ## Integrações
 
-- **Gemini:** SDK oficial `@google/genai`, chave mantida somente no backend; modelo selecionado por `GEMINI_MODEL`. O modelo identifica a fotografia, nunca fornece preços.
-- **Mercado Livre:** adaptador de API oficial de busca de anúncios ativos, com timeout e retry limitado. Falha na pesquisa mantém a identificação.
-- **Imagens:** temporárias no disco local do processo; nenhum fornecedor ou credencial de armazenamento externo.
+- **Gemini Live:** o backend mantém a chave e emite credenciais efêmeras limitadas; o app envia quadros diretamente ao provedor. O modelo só identifica o item e não estima preços.
+- **Mercado Livre:** adaptador para busca de anúncios ativos, com timeout e retry limitado. Falha na pesquisa mantém a identificação.
+- **Neon:** autenticação, histórico e dados estruturados do RADAR.
+- **Storage de imagens:** inexistente; sem R2, Firebase Storage ou outro bucket.
 
-## Segurança e privacidade
+## Segurança e limites
 
-Uploads autenticados, limite de tamanho e quantidade, allowlist de MIME, validação real por decodificação, caminhos temporários aleatórios, diretórios removidos após uso, endpoints isolados por usuário, segredos apenas no backend e logs sem conteúdo de imagem.
+O endpoint de sessão exige autenticação e tem rate limit de dez emissões por minuto. O token vale cinco minutos, aceita uma sessão e deixa de abrir novas sessões após um minuto. O cliente não recebe a chave Gemini permanente. As rotas da API RADAR não aceitam upload de imagem; o endpoint de resultado valida o formato e os limites dos campos da identificação.
 
