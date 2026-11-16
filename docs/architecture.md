@@ -8,9 +8,10 @@
 
 1. O usuário concede acesso à câmera e inicia a leitura ao vivo.
 2. O app solicita uma sessão ao endpoint autenticado `POST /api/v1/analyses/live-session` e mantém uma única conexão ao vivo durante a leitura (até 30 segundos).
-4. O backend usa `GEMINI_API_KEY` para emitir um token Gemini Live de uso único, com prazo curto, e restringe a sessão ao modelo e à configuração de identificação do RADAR.
-5. O app conecta diretamente ao WebSocket Gemini Live, mantém a prévia aberta e envia quadros JPEG comprimidos no máximo uma vez por segundo por `realtimeInput.video`. A saída é configurada como AUDIO e a identificação retorna por chamada de função estruturada não bloqueante. O app consome os argumentos JSON sem reproduzir áudio; chamadas parciais não impedem o envio dos próximos quadros. O fluxo de bytes de imagem não atravessa a API RADAR.
-6. O app envia somente os campos estruturados para `POST /api/v1/analyses/live-result`.
+3. O backend usa `GEMINI_API_KEY` para emitir um token Gemini Live de uso único, com prazo curto, e restringe a sessão ao modelo e à configuração de identificação do RADAR.
+4. O app conecta diretamente ao WebSocket Gemini Live, mantém a prévia aberta e envia quadros JPEG comprimidos no máximo uma vez por segundo por `realtimeInput.video`. Como a API não inicia uma resposta apenas com quadros de vídeo, o cliente envia um pedido de identificação depois do primeiro quadro e a cada três quadros seguintes. A saída é configurada como AUDIO e a identificação retorna por chamada de função estruturada não bloqueante; o app consome os argumentos JSON sem reproduzir áudio.
+5. O app exibe e mescla as atualizações do JSON enquanto o usuário enquadra o item. As imagens vão diretamente ao Gemini e não atravessam a API RADAR.
+6. Quando a leitura termina, o app envia somente os campos estruturados para `POST /api/v1/analyses/live-result`.
 7. O backend valida a identificação com Zod e persiste análise e produto no Neon.
 8. O usuário confirma/corrige a identificação; só então o backend pesquisa anúncios, estima preços e calcula rentabilidade.
 
