@@ -101,7 +101,7 @@ export async function getAnalysisResult(userId: string, analysisId: string) {
     market: {
       ...summary,
       collectedAt: allRefs[0]?.collectedAt ?? null,
-      isActiveListingData: refs.length > 0 && refs.every((r) => r.source === "mercado_livre"),
+      isActiveListingData: refs.length > 0 && refs.every((r) => r.metadata.activeListing === true),
       representsCompletedSales: false,
       sourceNames: [...new Set(allRefs.map((r: any) => r.source))],
     },

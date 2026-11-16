@@ -9,9 +9,6 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32).default("development-only-secret-change-this-before-deploying"),
   GEMINI_API_KEY: optional,
   GEMINI_LIVE_MODEL: z.string().default("gemini-3.8-live"),
-  GEMINI_MARKET_MODEL: z.string().default("gemini-3.8-flash"),
-  MERCADOLIVRE_ACCESS_TOKEN: optional,
-  MERCADOLIVRE_API_BASE: z.string().url().default("https://api.mercadolibre.com"),
   MOBILE_ORIGINS: z.string().default("*"),
 });
 
