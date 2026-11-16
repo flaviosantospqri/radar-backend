@@ -26,7 +26,7 @@ A API fica em `http://localhost:4000`; Swagger UI em `/api/docs`; verificação 
 
 ## Identificação visual e privacidade
 
-O app autenticado solicita `POST /api/v1/analyses/live-session`. O backend usa `GEMINI_API_KEY` para emitir um token de sessão Gemini Live de uso único e curta duração. O app abre uma conexão WebSocket diretamente com o Gemini e envia quadros comprimidos da prévia da câmera. Os quadros não passam pelo Render, não chegam ao Neon e não são gravados pelo RADAR.
+O app autenticado solicita `POST /api/v1/analyses/live-session`. O backend usa `GEMINI_API_KEY` para emitir um token de sessão Gemini Live de uso único e curta duração. O app abre uma conexão WebSocket diretamente com o Gemini e envia quadros comprimidos da prévia da câmera. A sessão usa a modalidade AUDIO exigida pelo Gemini Live nativo e pede a identificação por chamada de função estruturada; o app consome os argumentos JSON sem reproduzir áudio. Os quadros não passam pelo Render, não chegam ao Neon e não são gravados pelo RADAR.
 
 Depois da identificação, o app envia somente o JSON validado pelo usuário para `POST /api/v1/analyses/live-result`. O backend valida o contrato com Zod e persiste identificação e estado da análise. A confirmação, pesquisa de anúncios, rentabilidade, oportunidades e histórico permanecem no backend.
 

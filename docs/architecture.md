@@ -10,8 +10,8 @@
 2. O app mostra a prévia contínua da câmera e captura quadros JPEG pequenos, em sequência e no máximo uma vez por segundo.
 3. O app solicita uma sessão ao endpoint autenticado `POST /api/v1/analyses/live-session`.
 4. O backend usa `GEMINI_API_KEY` para emitir um token Gemini Live de uso único, com prazo curto, e restringe a sessão ao modelo e à configuração de identificação do RADAR.
-5. O app conecta diretamente ao WebSocket Gemini Live e envia os quadros para inferência. O fluxo de bytes de imagem não atravessa a API RADAR.
-6. O app interpreta a resposta JSON e envia somente os campos estruturados para `POST /api/v1/analyses/live-result`.
+5. O app conecta diretamente ao WebSocket Gemini Live e envia os quadros para inferência. A saída é configurada como AUDIO e a identificação retorna por chamada de função estruturada; o app consome os argumentos JSON sem reproduzir áudio. O fluxo de bytes de imagem não atravessa a API RADAR.
+6. O app envia somente os campos estruturados para `POST /api/v1/analyses/live-result`.
 7. O backend valida a identificação com Zod e persiste análise e produto no Neon.
 8. O usuário confirma/corrige a identificação; só então o backend pesquisa anúncios, estima preços e calcula rentabilidade.
 

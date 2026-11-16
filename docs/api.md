@@ -4,7 +4,7 @@ Base local: `http://localhost:4000/api/v1`. Respostas de sucesso usam `{ "data":
 
 ## Análises
 
-- `POST /analyses/live-session` — autenticado; emite token efêmero Gemini Live limitado ao modelo de leitura do RADAR. A chave Gemini permanente nunca é retornada. O cliente conecta ao Gemini diretamente; imagens não são enviadas a esta API.
+- `POST /analyses/live-session` — autenticado; emite token efêmero Gemini Live limitado ao modelo de leitura do RADAR, à modalidade AUDIO suportada e à função estruturada de identificação. A chave Gemini permanente nunca é retornada. O cliente conecta ao Gemini diretamente; imagens não são enviadas a esta API.
 - `POST /analyses/live-result` — autenticado; recebe `{"identification": {...}}`, valida todos os campos da identificação com Zod e cria o registro estruturado. Aceita `Idempotency-Key` para evitar duplicações.
 - `POST /analyses/:id/confirm-identification` — JSON corrigido/confirmado pelo usuário.
 - `POST /analyses/:id/research` — inicia pesquisa após confirmação.
