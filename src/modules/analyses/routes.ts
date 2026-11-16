@@ -118,10 +118,12 @@ export async function analysesRoutes(app: FastifyInstance) {
     const id = uuidSchema.parse((request.params as { id: string }).id);
     const userId = request.auth!.userId;
     const { analysis, product } = await getOwnedAnalysis(userId, id);
-    if (!product?.confirmedByUser) throw new AppError("Confirme os dados do produto antes da pesquisa.", 409, "CONFIRMATION_REQUIRED");
+    if (!product) throw new AppError("Identifique o produto antes da pesquisa.", 409, "PRODUCT_NOT_IDENTIFIED");
+    const forceRefresh = (request.body as { force?: unknown } | null)?.force === true;
     const db = requireDb();
-    if (await cachedResearchExists(id)) return { data: await getAnalysisResult(userId, id), reusedCachedResearch: true };
-    const query = [product.brand, product.model, product.version, product.name].filter(Boolean).join(" ").slice(0, 180);
+    if (!forceRefresh && await cachedResearchExists(id)) return { data: await getAnalysisResult(userId, id), reusedCachedResearch: true };
+    const query = (product.searchQueries.find((value) => value.trim())
+      ?? [product.brand, product.model, product.version, product.name].filter(Boolean).join(" ")).slice(0, 180);
     const startedAt = Date.now();
     await db.update(analyses).set({ status: "researching", updatedAt: new Date() }).where(eq(analyses.id, id));
     try {
@@ -130,17 +132,20 @@ export async function analysesRoutes(app: FastifyInstance) {
         const match = classifyMatch(product, reference.title);
         return { ...reference, ...match };
       });
-      for (const reference of classified) {
-        await db.insert(marketReferences).values({
-          analysisId: id, source: reference.source, externalId: reference.externalId, title: reference.title,
-          priceCents: reference.priceCents, currency: reference.currency, condition: reference.condition, url: reference.url,
-          collectedAt: reference.collectedAt, matchConfidenceBps: reference.confidenceBps, matchType: reference.type,
-          isCompatible: reference.compatible, metadata: reference.metadata,
-        }).onConflictDoUpdate({
-          target: [marketReferences.analysisId, marketReferences.url],
-          set: { title: reference.title, priceCents: reference.priceCents, condition: reference.condition, collectedAt: reference.collectedAt, matchConfidenceBps: reference.confidenceBps, matchType: reference.type, isCompatible: reference.compatible, metadata: reference.metadata },
-        });
-      }
+      await db.transaction(async (tx) => {
+        if (forceRefresh) await tx.delete(marketReferences).where(eq(marketReferences.analysisId, id));
+        for (const reference of classified) {
+          await tx.insert(marketReferences).values({
+            analysisId: id, source: reference.source, externalId: reference.externalId, title: reference.title,
+            priceCents: reference.priceCents, currency: reference.currency, condition: reference.condition, url: reference.url,
+            collectedAt: reference.collectedAt, matchConfidenceBps: reference.confidenceBps, matchType: reference.type,
+            isCompatible: reference.compatible, metadata: reference.metadata,
+          }).onConflictDoUpdate({
+            target: [marketReferences.analysisId, marketReferences.url],
+            set: { title: reference.title, priceCents: reference.priceCents, condition: reference.condition, collectedAt: reference.collectedAt, matchConfidenceBps: reference.confidenceBps, matchType: reference.type, isCompatible: reference.compatible, metadata: reference.metadata },
+          });
+        }
+      });
       await db.insert(researchLogs).values({ analysisId: id, provider: mercadoLivreProvider.getProviderName(), status: "success", query, resultCount: classified.length, executionTimeMs: Date.now() - startedAt });
       await evaluateAnalysis(userId, id, { askingPriceCents: analysis.askingPriceCents });
       return { data: await getAnalysisResult(userId, id), reusedCachedResearch: false };

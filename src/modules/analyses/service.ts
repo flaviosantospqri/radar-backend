@@ -105,18 +105,20 @@ export async function evaluateAnalysis(userId: string, analysisId: string, input
   }
   const selectedScenario = input.scenario ?? userSettings?.preferredScenario ?? "provavel";
   const selected = scenarios[selectedScenario] as null | Record<string, any>;
-  const recommendationResult = scoreOpportunity({
-    askingPriceCents: input.askingPriceCents,
-    estimatedProfitCents: selected?.estimatedProfitCents ?? null,
-    roiBps: selected?.roiBps ?? null,
-    maximumPurchasePriceCents: selected?.maximumPurchasePriceCents ?? null,
-    minimumProfitCents: userSettings?.minimumProfitCents ?? 0,
-    minimumRoiBps: userSettings?.minimumRoiBps ?? 2000,
-    identificationConfidenceBps: product?.confidenceBps ?? null,
-    comparableCount: market.comparableCount,
-    liquidity: market.liquidity as "ALTA" | "MEDIA" | "BAIXA" | "INSUFICIENTE",
-    functionalCondition: product?.functionalCondition ?? null,
-  });
+  const recommendationResult = input.askingPriceCents === null
+    ? { recommendation: null, reasons: [] as string[] }
+    : scoreOpportunity({
+      askingPriceCents: input.askingPriceCents,
+      estimatedProfitCents: selected?.estimatedProfitCents ?? null,
+      roiBps: selected?.roiBps ?? null,
+      maximumPurchasePriceCents: selected?.maximumPurchasePriceCents ?? null,
+      minimumProfitCents: userSettings?.minimumProfitCents ?? 0,
+      minimumRoiBps: userSettings?.minimumRoiBps ?? 2000,
+      identificationConfidenceBps: product?.confidenceBps ?? null,
+      comparableCount: market.comparableCount,
+      liquidity: market.liquidity as "ALTA" | "MEDIA" | "BAIXA" | "INSUFICIENTE",
+      functionalCondition: product?.functionalCondition ?? null,
+    });
   const resalePriceCents = selected?.resalePriceCents ?? null;
   await db.insert(profitability).values({
     analysisId,

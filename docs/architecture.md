@@ -13,7 +13,8 @@
 5. O app exibe e mescla as atualizações do JSON enquanto o usuário enquadra o item. As imagens vão diretamente ao Gemini e não atravessam a API RADAR.
 6. Quando a leitura termina, o app envia somente os campos estruturados para `POST /api/v1/analyses/live-result`.
 7. O backend valida a identificação com Zod e persiste análise e produto no Neon.
-8. O usuário confirma/corrige a identificação; só então o backend pesquisa anúncios, estima preços e calcula rentabilidade.
+8. A confirmação/refinamento da identificação é opcional. O usuário pode pesquisar com os campos reconhecidos imediatamente ou editá-los antes da consulta.
+9. O backend pesquisa anúncios ativos do Mercado Livre, calcula a média, mediana e faixa de preços e estima revenda e preço máximo de compra. O preço pedido é opcional: sem ele, a API não inventa lucro líquido; quando informado, calcula lucro e ROI.
 
 Gemini recebe os quadros para processá-los. Eles não são armazenados pelo RADAR, enviados ao Render ou persistidos no PostgreSQL. O app mantém a melhor resposta estruturada durante até 30 segundos; uma resposta de confiança baixa, mas útil, segue para confirmação como hipótese editável. Se nenhum quadro permitir reconhecer o tipo de item, a leitura termina com orientação para enquadrar novamente. Uma fotografia de galeria, se escolhida, segue a mesma conexão direta ao Gemini e nunca é enviada ao backend.
 
