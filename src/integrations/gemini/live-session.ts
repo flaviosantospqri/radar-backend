@@ -1,12 +1,12 @@
-import { GoogleGenAI, MediaResolution, Modality, type LiveConnectConfig, type Tool } from "@google/genai";
+import { Behavior, GoogleGenAI, MediaResolution, Modality, type LiveConnectConfig, type Tool } from "@google/genai";
 import { env } from "../../config/env.js";
 import { AppError } from "../../shared/errors.js";
 
 export const liveIdentificationPrompt = [
-  "Identifique o produto visível na câmera para um aplicativo brasileiro de revenda.",
-  "Retorne a identificação chamando a função report_product_identification. Não responda em texto nem fale em voz alta.",
-  "Escreva em português brasileiro. Não invente marca, modelo, funcionamento, autenticidade ou preço. Se não for possível identificar o item, use name='Produto não identificado', confidence abaixo de 0.35 e explique o que falta em uncertainInformation.",
-  "Considere somente o item central visível. A câmera enviará quadros temporários enquanto o usuário aponta o aparelho; use o quadro mais recente para a resposta.",
+  "Você identifica produtos para revenda a partir dos quadros da câmera enviados continuamente durante uma sessão ao vivo.",
+  "Analise os quadros novos sem interromper a sessão. Quando reconhecer pelo menos a categoria ou o tipo geral, chame report_product_identification com sua melhor resposta disponível, mesmo que alguns campos permaneçam incertos. Faça uma nova chamada somente quando surgir evidência materialmente melhor ou um campo importante puder ser atualizado.",
+  "Escreva em português brasileiro. Nunca invente marca, modelo exato, ano, edição, funcionamento, autenticidade ou preço. Quando a identidade exata não estiver visível, use um nome amplo mas útil como 'Action figure colecionável', registre candidatos como hipóteses em attributes.suggestions e explique a incerteza. Sugestões devem ter confiança de 0 a 1 e uma justificativa visual curta. Use o campo version para ano/edição confirmados; hipóteses continuam em suggestions até o usuário confirmá-las.",
+  "Se a imagem estiver obstruída ou não mostrar um produto, use name='Produto não identificado', confidence=0 e não crie sugestões. Considere o objeto central e somente evidências visíveis. Os quadros são temporários e não devem ser descritos como armazenados.",
 ].join(" ");
 
 const responseModalities = [Modality.AUDIO];
@@ -14,10 +14,11 @@ const temperature = 0.1;
 const maxOutputTokens = 1200;
 const mediaResolution = MediaResolution.MEDIA_RESOLUTION_LOW;
 const systemInstruction = { parts: [{ text: liveIdentificationPrompt }] };
-const identificationTool: Tool = {
+export const identificationTool: Tool = {
   functionDeclarations: [{
     name: "report_product_identification",
     description: "Retorna a identificação visual do produto no formato estruturado exigido pelo RADAR.",
+    behavior: Behavior.NON_BLOCKING,
     parametersJsonSchema: {
       type: "object",
       additionalProperties: false,
@@ -32,7 +33,25 @@ const identificationTool: Tool = {
         attributes: {
           type: "object",
           additionalProperties: true,
-          description: "Características observáveis do produto em pares chave-valor.",
+          description: "Características observáveis e hipóteses revisáveis sem descartar atributos reconhecidos.",
+          properties: {
+            suggestions: {
+              type: "array",
+              maxItems: 8,
+              description: "Hipóteses para campos que não podem ser confirmados visualmente.",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  field: { type: "string", enum: ["category", "subcategory", "brand", "model", "version"] },
+                  value: { type: "string", minLength: 1, maxLength: 160 },
+                  confidence: { type: "number", minimum: 0, maximum: 1 },
+                  rationale: { type: "string", maxLength: 240 },
+                },
+                required: ["field", "value", "confidence", "rationale"],
+              },
+            },
+          },
         },
         visibleCondition: { type: "string", nullable: true, maxLength: 500 },
         visibleDefects: { type: "array", maxItems: 30, items: { type: "string", maxLength: 300 } },

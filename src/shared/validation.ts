@@ -2,6 +2,17 @@ import { z } from "zod";
 
 export const uuidSchema = z.string().uuid();
 export const centsSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const identificationSuggestionSchema = z.object({
+  field: z.enum(["category", "subcategory", "brand", "model", "version"]),
+  value: z.string().trim().min(1).max(160),
+  confidence: z.number().min(0).max(1),
+  rationale: z.string().max(240),
+});
+const identificationAttributesSchema = z.record(z.string(), z.unknown()).superRefine((attributes, context) => {
+  if (attributes.suggestions === undefined) return;
+  const result = z.array(identificationSuggestionSchema).max(8).safeParse(attributes.suggestions);
+  if (!result.success) context.addIssue({ code: "custom", path: ["suggestions"], message: "Sugestões inválidas." });
+});
 export const identificationSchema = z.object({
   name: z.string().min(1).max(240),
   category: z.string().max(120).nullable(),
@@ -10,7 +21,7 @@ export const identificationSchema = z.object({
   model: z.string().max(160).nullable(),
   version: z.string().max(160).nullable(),
   description: z.string().max(1000).nullable(),
-  attributes: z.record(z.string(), z.unknown()),
+  attributes: identificationAttributesSchema,
   visibleCondition: z.string().max(500).nullable(),
   visibleDefects: z.array(z.string().max(300)).max(30),
   confidence: z.number().min(0).max(1),

@@ -37,7 +37,7 @@ export async function analysesRoutes(app: FastifyInstance) {
     try {
       const product = await persistIdentification(id, identification);
       await db.insert(aiUsageLogs).values({
-        analysisId: id, provider: "google_genai", model: process.env.GEMINI_LIVE_MODEL ?? "gemini-3.1-flash-live-preview",
+        analysisId: id, provider: "google_genai", model: process.env.GEMINI_LIVE_MODEL ?? "gemini-3.8-live",
         operation: "live_product_identification", status: "success", errorMessage: null,
       }).catch((error) => request.log.warn({ err: error, analysisId: id }, "Could not record the client-side Gemini usage event"));
       return reply.code(202).send({ data: { ...(await getOwnedAnalysis(userId, id)), product } });

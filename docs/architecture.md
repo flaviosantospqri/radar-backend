@@ -7,15 +7,14 @@
 ## Fluxo de leitura ao vivo
 
 1. O usuário concede acesso à câmera e inicia a leitura ao vivo.
-2. O app mostra a prévia contínua da câmera e captura quadros JPEG pequenos, em sequência e no máximo uma vez por segundo.
-3. O app solicita uma sessão ao endpoint autenticado `POST /api/v1/analyses/live-session`.
+2. O app solicita uma sessão ao endpoint autenticado `POST /api/v1/analyses/live-session` e mantém uma única conexão ao vivo durante a leitura (até 30 segundos).
 4. O backend usa `GEMINI_API_KEY` para emitir um token Gemini Live de uso único, com prazo curto, e restringe a sessão ao modelo e à configuração de identificação do RADAR.
-5. O app conecta diretamente ao WebSocket Gemini Live e envia os quadros para inferência. A saída é configurada como AUDIO e a identificação retorna por chamada de função estruturada; o app consome os argumentos JSON sem reproduzir áudio. O fluxo de bytes de imagem não atravessa a API RADAR.
+5. O app conecta diretamente ao WebSocket Gemini Live, mantém a prévia aberta e envia quadros JPEG comprimidos no máximo uma vez por segundo por `realtimeInput.video`. A saída é configurada como AUDIO e a identificação retorna por chamada de função estruturada não bloqueante. O app consome os argumentos JSON sem reproduzir áudio; chamadas parciais não impedem o envio dos próximos quadros. O fluxo de bytes de imagem não atravessa a API RADAR.
 6. O app envia somente os campos estruturados para `POST /api/v1/analyses/live-result`.
 7. O backend valida a identificação com Zod e persiste análise e produto no Neon.
 8. O usuário confirma/corrige a identificação; só então o backend pesquisa anúncios, estima preços e calcula rentabilidade.
 
-Gemini recebe os quadros para processá-los. Eles não são armazenados pelo RADAR, enviados ao Render ou persistidos no PostgreSQL. Uma fotografia de galeria, se escolhida, segue a mesma conexão direta ao Gemini e nunca é enviada ao backend.
+Gemini recebe os quadros para processá-los. Eles não são armazenados pelo RADAR, enviados ao Render ou persistidos no PostgreSQL. O app mantém a melhor resposta estruturada durante até 30 segundos; uma resposta de confiança baixa, mas útil, segue para confirmação como hipótese editável. Se nenhum quadro permitir reconhecer o tipo de item, a leitura termina com orientação para enquadrar novamente. Uma fotografia de galeria, se escolhida, segue a mesma conexão direta ao Gemini e nunca é enviada ao backend.
 
 ## Persistência e histórico
 
@@ -25,7 +24,7 @@ Matching, cenários e recomendação são executados pelo backend. Valores monet
 
 ## Integrações
 
-- **Gemini Live:** o backend mantém a chave e emite credenciais efêmeras limitadas; o app envia quadros diretamente ao provedor. O modelo só identifica o item e não estima preços.
+- **Gemini Live:** o backend mantém a chave e emite credenciais efêmeras limitadas; o app envia quadros diretamente ao provedor. O modelo `gemini-3.8-live` identifica o item e pode retornar hipóteses em `attributes.suggestions`; o modelo não estima preços.
 - **Mercado Livre:** adaptador para busca de anúncios ativos, com timeout e retry limitado. Falha na pesquisa mantém a identificação.
 - **Neon:** autenticação, histórico e dados estruturados do RADAR.
 - **Storage de imagens:** inexistente; sem R2, Firebase Storage ou outro bucket.

@@ -11,7 +11,7 @@ npm install
 Copy-Item .env.example .env
 ```
 
-Configure `DATABASE_URL`, `JWT_SECRET` e `GEMINI_API_KEY`. `GEMINI_LIVE_MODEL` usa `gemini-3.1-flash-live-preview` por padrão. `MERCADOLIVRE_ACCESS_TOKEN` é opcional e depende das permissões vigentes da API.
+Configure `DATABASE_URL`, `JWT_SECRET` e `GEMINI_API_KEY`. `GEMINI_LIVE_MODEL` usa `gemini-3.8-live` por padrão. No Render, defina esse valor explicitamente para substituir configurações antigas. `MERCADOLIVRE_ACCESS_TOKEN` é opcional e depende das permissões vigentes da API.
 
 Não configure Cloudflare R2, Firebase Storage nem outro bucket de imagens. O backend não recebe arquivos de imagem.
 
@@ -26,11 +26,11 @@ A API fica em `http://localhost:4000`; Swagger UI em `/api/docs`; verificação 
 
 ## Identificação visual e privacidade
 
-O app autenticado solicita `POST /api/v1/analyses/live-session`. O backend usa `GEMINI_API_KEY` para emitir um token de sessão Gemini Live de uso único e curta duração. O app abre uma conexão WebSocket diretamente com o Gemini e envia quadros comprimidos da prévia da câmera. A sessão usa a modalidade AUDIO exigida pelo Gemini Live nativo e pede a identificação por chamada de função estruturada; o app consome os argumentos JSON sem reproduzir áudio. Os quadros não passam pelo Render, não chegam ao Neon e não são gravados pelo RADAR.
+O app autenticado solicita `POST /api/v1/analyses/live-session` uma vez por leitura. O backend usa `GEMINI_API_KEY` para emitir um token de sessão Gemini Live de uso único e curta duração. O app abre uma conexão WebSocket diretamente com o Gemini e envia quadros JPEG comprimidos em sequência, até um por segundo, enquanto a câmera está aberta. A sessão usa a modalidade AUDIO exigida pelo Gemini Live e chamada de função estruturada não bloqueante; o app consome os argumentos JSON sem reproduzir áudio e continua recebendo quadros. Os quadros não passam pelo Render, não chegam ao Neon e não são gravados pelo RADAR.
 
-Depois da identificação, o app envia somente o JSON validado pelo usuário para `POST /api/v1/analyses/live-result`. O backend valida o contrato com Zod e persiste identificação e estado da análise. A confirmação, pesquisa de anúncios, rentabilidade, oportunidades e histórico permanecem no backend.
+Depois da identificação, o app envia somente o JSON estruturado para `POST /api/v1/analyses/live-result`. Se a identificação exata estiver incerta, o Gemini pode sugerir tipo, marca, modelo ou edição com confiança e justificativa visual; essas sugestões ficam dentro do JSON `attributes` existente, sem migration, e o usuário pode corrigir ou aceitar os campos na confirmação. O backend valida o contrato com Zod e persiste identificação e estado da análise. A confirmação, pesquisa de anúncios, rentabilidade, oportunidades e histórico permanecem no backend.
 
-O Gemini recebe os quadros diretamente para inferência. O RADAR não cria cópia permanente, não salva Base64 nem cria arquivo temporário no servidor. No celular, cada JPEG de captura é reduzido em cache do app, enviado à sessão Gemini e apagado ao terminar o processamento do quadro.
+O Gemini recebe os quadros diretamente para inferência. O RADAR não cria cópia permanente, não salva Base64 nem cria arquivo temporário no servidor. No celular, cada JPEG de captura é reduzido em cache do app, enviado à sessão Gemini e apagado após o envio do quadro.
 
 ## Scripts
 
