@@ -8,7 +8,7 @@ Base local: `http://localhost:4000/api/v1`. Respostas de sucesso usam `{ "data":
 - `POST /analyses/live-result` — autenticado; recebe `{"identification": {...}}`, valida todos os campos da identificação com Zod e cria o registro estruturado. Hipóteses opcionais permanecem em `identification.attributes.suggestions` e não exigem migration. Aceita `Idempotency-Key` para evitar duplicações.
 - `POST /analyses/:id/confirm-identification` — JSON corrigido pelo usuário (opcional antes da pesquisa).
 - `POST /analyses/:id/research` — pesquisa anúncios usando a identificação atual mesmo sem confirmação. O corpo opcional `{"force":true}` ignora o cache e substitui as referências anteriores após a consulta.
-- `GET /analyses/:id/result` — identificação, média e faixa dos preços anunciados, referências, liquidez, cenários e recomendação. Sem preço de compra, retorna o teto de compra recomendado; lucro líquido e ROI são calculados quando o usuário informa o preço pedido.
+- `GET /analyses/:id/result` — identificação, média e faixa de preços, referências, liquidez, cenários e recomendação. `market.priceBasis` informa se a faixa vem de anúncios compatíveis (`active_listings`), itens similares (`similar_listings`) ou estimativa indicativa baseada em resultados públicos (`grounded_estimate`). Para a estimativa indicativa, `market.estimateNote` e `market.estimateSources` descrevem limitações e fontes. Sem preço de compra, retorna o teto de compra recomendado; lucro líquido e ROI são calculados quando o usuário informa o preço pedido.
 - `POST /analyses/:id/recalculate` — recalcula custos sem chamar IA nem pesquisa.
 - `GET /analyses/:id/references` — anúncios armazenados, com fonte, URL e data de coleta.
 - `GET /analyses?page=1&limit=20` — histórico paginado, sem imagens.
@@ -28,5 +28,5 @@ A API não possui endpoint multipart para imagem. Os quadros da câmera e fotos 
 
 ## Estados e limitações
 
-Falha do Gemini mantém o resultado não criado; a identificação pode ser repetida ao iniciar outra sessão de leitura. Falha da fonte de mercado deixa a análise parcial, mantendo os dados já gravados. As referências do Mercado Livre são anúncios ativos, não vendas comprovadas. A foto não pode ser reaberta no histórico.
+Falha do Gemini na leitura mantém o resultado não criado; a identificação pode ser repetida ao iniciar outra sessão. A busca do Mercado Livre é complementada pelo Gemini com Google Search grounding quando bloqueada ou sem comparáveis. As faixas baseadas em anúncios são preços pedidos, não vendas confirmadas; a faixa `grounded_estimate` é indicativa e exibe suas fontes. A foto não pode ser reaberta no histórico.
 

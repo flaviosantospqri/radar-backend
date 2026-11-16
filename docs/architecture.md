@@ -14,7 +14,8 @@
 6. Quando a leitura termina, o app envia somente os campos estruturados para `POST /api/v1/analyses/live-result`.
 7. O backend valida a identificação com Zod e persiste análise e produto no Neon.
 8. A confirmação/refinamento da identificação é opcional. O usuário pode pesquisar com os campos reconhecidos imediatamente ou editá-los antes da consulta.
-9. O backend pesquisa anúncios ativos do Mercado Livre, calcula a média, mediana e faixa de preços e estima revenda e preço máximo de compra. O preço pedido é opcional: sem ele, a API não inventa lucro líquido; quando informado, calcula lucro e ROI.
+9. O backend pesquisa anúncios ativos do Mercado Livre. Se a busca for bloqueada ou não trouxer comparáveis, tenta uma pesquisa atual na web com Gemini Google Search grounding. As referências de anúncio são validadas contra os links citados pela busca; se não houver preços de anúncios verificáveis, uma faixa indicativa baseada nos resultados públicos pode ser persistida com baixa confiança e suas fontes.
+10. O backend calcula média, mediana e faixa observada/indicativa, além do preço máximo de compra recomendado no cenário escolhido. O teto considera taxa de venda, custos e metas configuradas. O preço pedido é opcional: sem ele, a API ainda calcula quanto pagar no máximo; quando informado, calcula lucro líquido e ROI.
 
 Gemini recebe os quadros para processá-los. Eles não são armazenados pelo RADAR, enviados ao Render ou persistidos no PostgreSQL. O app mantém a melhor resposta estruturada durante até 30 segundos; uma resposta de confiança baixa, mas útil, segue para confirmação como hipótese editável. Se nenhum quadro permitir reconhecer o tipo de item, a leitura termina com orientação para enquadrar novamente. Uma fotografia de galeria, se escolhida, segue a mesma conexão direta ao Gemini e nunca é enviada ao backend.
 
@@ -27,7 +28,8 @@ Matching, cenários e recomendação são executados pelo backend. Valores monet
 ## Integrações
 
 - **Gemini Live:** o backend mantém a chave e emite credenciais efêmeras limitadas; o app envia quadros diretamente ao provedor. O modelo `gemini-3.8-live` identifica o item e pode retornar hipóteses em `attributes.suggestions`; o modelo não estima preços.
-- **Mercado Livre:** adaptador para busca de anúncios ativos, com timeout e retry limitado. Falha na pesquisa mantém a identificação.
+- **Pesquisa de mercado:** tenta anúncios ativos do Mercado Livre e, em caso de bloqueio/ausência de resultados compatíveis, usa `GEMINI_MARKET_MODEL` com Google Search grounding. As fontes e a base da estimativa são devolvidas ao app; resultados indicativos ficam separados dos anúncios individuais e recebem confiança menor. Se nenhuma evidência de preço estiver disponível, a identificação é preservada sem fabricar valores.
+- **Gemini Google Search:** usa a mesma `GEMINI_API_KEY` do backend; não exige outra credencial. A pesquisa com grounding pode gerar custo de API conforme o uso da busca.
 - **Neon:** autenticação, histórico e dados estruturados do RADAR.
 - **Storage de imagens:** inexistente; sem R2, Firebase Storage ou outro bucket.
 
